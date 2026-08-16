@@ -64,14 +64,5 @@ class DenseVolume(VolumeField):
         
 
     def regularization_field(self) -> Tensor:
-        """Dense TV/sparsity should act on physical emission, not theta."""
-        emission = self.emission_grid()
-        
-        tv_z = torch.abs(emission[1:, :, :] - emission[:-1, :, :]).sum()
-        tv_y = torch.abs(emission[:, 1:, :] - emission[:, :-1, :]).sum()
-        tv_x = torch.abs(emission[:, :, 1:] - emission[:, :, :-1]).sum()
-        tv_loss = tv_z + tv_y + tv_x
-        
-        sparsity_loss = emission.sum()
-        
-        return tv_loss + sparsity_loss 
+        """Return the physical emission field on which priors act."""
+        return self.emission_grid()

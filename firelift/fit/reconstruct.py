@@ -100,39 +100,39 @@ def fit_volume(
         history dict such as `{"total": [...], "image": [...], ...}`.
     """
     history_tracking = {
-        "total" : [],
-        "image" : [],
-        "sparsity" : [],
-        "variation" : []
+        "total": [],
+        "image": [],
+        "sparsity": [],
+        "variation": [],
     }
-    
+
     optimizer = torch.optim.Adam(volume.parameters(), lr=config.lr)
-    
+
     for step in range(config.steps):
         optimizer.zero_grad()
-        
-        total_loss, component_loss = compute_loss(
-            volume, 
-            observations, 
-            weights=weights, 
-            n_samples_per_ray=config.n_samples_per_ray
-        )
-        
-        total_loss.backward()
-        
-        optimizer.step()
-        
-        history_tracking["total"].append(total_loss.item())
-        history_tracking["sparsity"].append(component_loss["sparsity"].item())
-        history_tracking["image"].append(component_loss["image"].item())
-        history_tracking["variation"].append(component_loss["variation"].item())
 
-        print(
-            f"epoch={step + 1} step={step} "
-            f"total_loss={total_loss.item():.6f} "
-            f"image_loss={component_loss['image'].item():.6f} "
-            f"sparsity_loss={component_loss['sparsity'].item():.6f} "
-            f"variation_loss={component_loss['variation'].item():.6f}"
+        total_loss, component_loss = compute_loss(
+            volume,
+            observations,
+            weights=weights,
+            n_samples_per_ray=config.n_samples_per_ray,
         )
-        
+
+        total_loss.backward()
+        optimizer.step()
+
+        history_tracking["total"].append(float(total_loss.item()))
+        history_tracking["sparsity"].append(float(component_loss["sparsity"].item()))
+        history_tracking["image"].append(float(component_loss["image"].item()))
+        history_tracking["variation"].append(float(component_loss["variation"].item()))
+
+        if step % config.log_every == 0 or step == config.steps - 1:
+            print(
+                f"epoch={step + 1} step={step} "
+                f"total_loss={total_loss.item():.6f} "
+                f"image_loss={component_loss['image'].item():.6f} "
+                f"sparsity_loss={component_loss['sparsity'].item():.6f} "
+                f"variation_loss={component_loss['variation'].item():.6f}"
+            )
+
     return history_tracking

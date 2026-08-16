@@ -45,33 +45,29 @@ class OrthographicCamera:
     far: float = 4.0
 
     def generate_rays(self, height: int, width: int) -> RayBundle:
-        """Generate one orthographic ray per image pixel.
+        """Generate one orthographic ray per image pixel."""
+        device = self.R_wc.device
+        dtype = self.R_wc.dtype
 
-        TODO:
-        1. Build image-plane coordinates centred around zero.
-        2. Respect pixel aspect ratio when converting ortho_width to height.
-        3. Form camera-space origins `(x_img, y_img, 0)`.
-        4. Transform origins into world space with `R_wc` and `t_wc`.
-        5. Transform camera forward `(0, 0, 1)` into world space.
-        6. Broadcast the forward vector to every pixel.
-        """
         aspect_ratio = width / height
         ortho_height = self.ortho_width / aspect_ratio
-        
-        x_coords = torch.linspace(-self.ortho_width / 2, self.ortho_width / 2, width)
-        y_coords = torch.linspace(-ortho_height / 2, ortho_height / 2, height)
-        
-        x_img, y_img = torch.meshgrid(x_coords, y_coords, indexing='ij')
-        
-        z_img = torch.zeros_like(x_img)  
+
+        x_coords = torch.linspace(-self.ortho_width / 2, self.ortho_width / 2, width, device=device, dtype=dtype)
+        y_coords = torch.linspace(ortho_height / 2, -ortho_height / 2, height, device=device, dtype=dtype)
+
+        y_img, x_img = torch.meshgrid(y_coords, x_coords, indexing='ij')
+        z_img = torch.zeros_like(x_img)
         camera_origins = torch.stack([x_img, y_img, z_img], dim=-1)
-        
+
+        # R_wc holds the camera basis in its columns, so v_world = R_wc @ v_camera;
+        # for the row-vector layout used here that is v_camera @ R_wc.T.
         world_origins = camera_origins @ self.R_wc.T + self.t_wc
-        
-        camera_forward = torch.tensor([0.0, 0.0, 1.0])
-        world_forward = camera_forward @ self.R_wc.T  # [3]
+
+        camera_forward = torch.tensor([0.0, 0.0, 1.0], device=device, dtype=dtype)
+        world_forward = camera_forward @ self.R_wc.T
+        world_forward = torch.nn.functional.normalize(world_forward, dim=-1)
         world_directions = torch.broadcast_to(world_forward, (height, width, 3))
-        
+
         return RayBundle(origins=world_origins, directions=world_directions)
         
     @classmethod
@@ -102,12 +98,12 @@ class OrthographicCamera:
         # u: upward direction (perpendicular to both f and r)
         u = torch.cross(f, r, dim=-1)
         
-        # R_wc: rotation matrix with basis vectors as rows
-        R_wc = torch.stack([r, u, f], dim=0)  # [3, 3]
-        
-        # t_wc: camera position in world coordinates
+        # R_wc: rotation matrix whose columns are the camera basis vectors in world space.
+        # This matches the convention v_world = v_camera @ R_wc.
+        R_wc = torch.stack([r, u, f], dim=1)  # [3, 3]
+
         t_wc = eye
-        
+
         return cls(R_wc=R_wc, t_wc=t_wc, ortho_width=ortho_width, near=near, far=far)
         
         
