@@ -1,0 +1,13 @@
+seed: 0
+resolution: [32, 32, 32]
+image_size: [128, 128]
+n_samples_per_ray: 96
+views: 1
+representation: dense
+fit:
+  steps: 1000
+  lr: 0.01
+loss:
+  image: 1.0
+  sparsity: 0.0
+  tv: 0.0

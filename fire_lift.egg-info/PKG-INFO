@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: fire-lift
+Version: 0.1.0
+Summary: Monocular fire lifting via differentiable emission-volume rendering
+Requires-Python: >=3.11
+Requires-Dist: torch>=2.2
+Requires-Dist: numpy>=1.26
+Requires-Dist: imageio>=2.34
+Requires-Dist: imageio-ffmpeg>=0.5
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: matplotlib>=3.8
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"

@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fire-lift"
+version = "0.1.0"
+description = "Monocular fire lifting via differentiable emission-volume rendering"
+requires-python = ">=3.11"
+dependencies = [
+  "torch>=2.2",
+  "numpy>=1.26",
+  "imageio>=2.34",
+  "imageio-ffmpeg>=0.5",
+  "pyyaml>=6.0",
+  "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools]
+packages = ["firelift"]
+
+[tool.setuptools.package-data]
+firelift = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

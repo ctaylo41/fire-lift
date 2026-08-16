@@ -1,0 +1,13 @@
+image_size: [128, 128]
+representation: axisymmetric
+profile_resolution: [32, 16]
+n_samples_per_ray: 96
+fit:
+  first_frame_steps: 1000
+  later_frame_steps: 200
+  lr: 0.01
+loss:
+  image: 1.0
+  sparsity: 0.0
+  tv: 0.0
+  temporal: 0.0
