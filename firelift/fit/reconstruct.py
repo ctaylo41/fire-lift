@@ -38,7 +38,7 @@ def image_loss(predicted: Tensor, target: Tensor) -> Tensor:
 
     TODO: start with L1. Keep this as a function so alternatives are easy.
     """
-    return torch.abs(target - predicted).sum()
+    return torch.abs(target - predicted).mean()
 
 
 def compute_loss(
@@ -66,18 +66,21 @@ def compute_loss(
         
         total_loss += loss*weights.image
         loss_components["image"] += loss.detach()
-            
-    sparsity_loss = sparsity_l1(volume).sum()
-    sparsity_loss *= weights.sparsity
-    total_loss += sparsity_loss
-    loss_components["sparsity"] = sparsity_loss.detach()
     
-    variation_loss = total_variation(volume)
-    variation_loss *= weights.tv
-    total_loss+= variation_loss
-    loss_components["variation"] = variation_loss.detach()
+    if LossWeights.sparsity!=0.0:     
+        sparsity_loss = sparsity_l1(volume).sum()
+        sparsity_loss *= weights.sparsity
+        total_loss += sparsity_loss
+        loss_components["sparsity"] = sparsity_loss.detach()
     
-    return (total_loss, loss_components)
+    
+    if LossWeights.tv!=0.0:
+        variation_loss = total_variation(volume)
+        variation_loss *= weights.tv
+        total_loss+= variation_loss
+        loss_components["variation"] = variation_loss.detach()
+        
+        return (total_loss, loss_components)
     
 
 def fit_volume(

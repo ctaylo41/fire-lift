@@ -61,7 +61,6 @@ class DenseVolume(VolumeField):
         
         return sampled.squeeze(0).squeeze(0).squeeze(1).squeeze(-1)
      
-        
 
     def regularization_field(self) -> Tensor:
         """Return the physical emission field on which priors act."""

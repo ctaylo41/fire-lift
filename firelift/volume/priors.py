@@ -6,7 +6,7 @@ from torch import Tensor
 
 def sparsity_l1(field: Tensor) -> Tensor:
     """Mean absolute emission magnitude for a non-negative field."""
-    return field.abs().mean()
+    return torch.abs(field).mean()
 
 
 def total_variation(field: Tensor) -> Tensor:

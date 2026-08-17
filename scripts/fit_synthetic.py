@@ -30,7 +30,7 @@ from firelift.render.camera import OrthographicCamera
 from firelift.render.raymarch import render_emission
 from firelift.synth.generate import make_plume_volume
 from firelift.volume.dense import DenseVolume
-
+from firelift.volume.FixedDenseVolume import FixedDenseVolume
 
 def _save_image(path: Path, image: torch.Tensor) -> None:
     arr = image.detach().cpu().numpy()
@@ -74,15 +74,17 @@ def main() -> None:
     out_dir = Path(__file__).resolve().parent.parent / "outputs" / "synthetic_fit"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    gt_volume = make_plume_volume(resolution, seed=seed)
-    gt_camera = OrthographicCamera(R_wc=torch.eye(3), t_wc=torch.zeros(3))
+    gt_tensor = make_plume_volume(resolution, seed=seed)
+    gt_volume = FixedDenseVolume(gt_tensor)
+
+    gt_camera = OrthographicCamera(R_wc=torch.eye(3), t_wc=torch.tensor([0.0, 0.0, -2.5]), near=1.5, far=3.5)
 
     reconstruction_volume = DenseVolume(resolution)
-    target_image = render_emission(reconstruction_volume, gt_camera, height, width, n_samples=64)
+    target_image = render_emission(gt_volume, gt_camera, height, width, n_samples=64)
 
     observation = [Observation(target_image, gt_camera)]
-    weights = LossWeights(image=1.0, sparsity=1e-4, tv=1e-5)
-    config = FitConfig(steps=10, lr=1e-2, n_samples_per_ray=64, log_every=5)
+    weights = LossWeights(image=1.0, sparsity=1.0, tv=1.0)
+    config = FitConfig(steps=100, lr=1e-2, n_samples_per_ray=64, log_every=5)
 
     history = fit_volume(reconstruction_volume, observation, weights=weights, config=config)
     predicted_image = render_emission(reconstruction_volume, gt_camera, height, width, n_samples=64)
