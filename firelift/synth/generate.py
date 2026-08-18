@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import torch
 from torch import Tensor
-
+import math
 
 @dataclass
 class GaussianBlob:
@@ -45,9 +45,72 @@ def gaussian_blob_field(points_xyz: Tensor, blob: GaussianBlob) -> Tensor:
     exponent = -0.5 * (normalized ** 2).sum(dim=-1)
     return blob.amplitude * torch.exp(exponent)
 
+def sample_blob_params(
+        radial_spread,
+        z_range,
+        scale_xy_range,
+        scale_z_range,
+        taper,
+        num_samples: int, 
+        axisymmetric,
+        axis_jitter,
+        anisotropy,
+        device, 
+        dtype
+    ):
+    def uniform_range(low, high, size):
+        return (high-low) * torch.rand(size, device=device, dtype=dtype) + low
+    
+    z = uniform_range(z_range[0], z_range[1],(num_samples,))
+    
+
+    z_min, z_max = z_range
+    normalized_height = (z - z_min) / (z_max - z_min)
+    taper_factor = 1.0 - taper * normalized_height
+
+    if axisymmetric:
+        x = torch.zeros_like(z)
+        y = torch.zeros_like(z)
+        if axis_jitter > 0.0:
+            x = torch.randn_like(z) * axis_jitter
+            y = torch.randn_like(z) * axis_jitter
+    else:
+            
+        max_r = radial_spread * taper_factor
+        
+        angle = uniform_range(0, 2* math.pi, (num_samples,))
+        
+        u = torch.rand((num_samples,), device=device, dtype=dtype)
+        radius = max_r * torch.sqrt(u)
+        x = radius * torch.cos(angle)
+        y = radius * torch.sin(angle)
+        
+    
+    
+    
+    
+    centers = torch.stack([x,y,z], dim=-1)
+    
+    scale_xy = uniform_range(scale_xy_range[0], scale_xy_range[1], (num_samples,)) * taper_factor
+    
+    if axisymmetric:
+        sx = sy = scale_xy
+    else:
+        sx = scale_xy * uniform_range(1.0 - anisotropy, 1.0 + anisotropy, (num_samples,))
+        sy = scale_xy * uniform_range(1.0 - anisotropy, 1.0 + anisotropy, (num_samples,))
+        
+    scale_z = uniform_range(scale_z_range[0], scale_z_range[1], (num_samples,))
+    scales = torch.stack([sx, sy, scale_z], dim=-1)
+    
+    amplitudes = uniform_range(0.5, 1.0, (num_samples,))
+
+    
+    return (centers, scales, amplitudes)
+
 
 def make_plume_volume(
     resolution: tuple[int, int, int] = (32, 32, 32),
+    bounds: tuple[float, float] = (-1.0, 1.0),
     *,
     n_blobs: int = 6,
     seed: int | None = None,
@@ -67,34 +130,42 @@ def make_plume_volume(
     Returns:
         dense volume `[D,H,W]`.
     """
+    radial_spread = 0.35
+    z_range = (-0.8, 0.7)
+    scale_xy_range = (0.10, 0.28)
+    scale_z_range = (0.15, 0.40)
+    taper = 0.55
+    anisotropy = 0.15
+    
+    
     if seed is not None:
         torch.manual_seed(seed)
         
-    grid = make_world_grid(resolution, device=device)
+    grid = make_world_grid(resolution, bounds=bounds, device=device)
         
     vol = torch.zeros(resolution, device=device)
     
-    z_bias = 0.2
-    for _ in range(n_blobs):
-        pos = torch.randn(3, device=device)
-        pos[2]+=z_bias
+    output = sample_blob_params(
+        radial_spread=radial_spread,
+        z_range=z_range,
+        scale_xy_range=scale_xy_range,
+        scale_z_range=scale_z_range,
+        taper=taper,
+        num_samples=n_blobs,
+        axisymmetric=approximately_axisymmetric,
+        axis_jitter=0.0,
+        anisotropy=anisotropy,
+        device=device,
+        dtype=torch.float32
+    )
         
-        if approximately_axisymmetric:
-            pos[0] = torch.randn(1, device=device) * 0.1
-            pos[1] = torch.randn(1, device=device) * 0.1
-        
-        scale = torch.rand(3, device=device) / (1.0 + pos[2])
-        
-        amplitude = torch.rand(1, device=device).item()
-                
-        blob = GaussianBlob(pos, scale, amplitude)
-        
+    
+    for center, scale, amplitude in zip(*output):
+        blob = GaussianBlob(center, scale, amplitude)
         eval_blob = gaussian_blob_field(grid, blob)
-        
         vol += eval_blob
-        
-    vol = vol/vol.max()
-    vol = vol.to(device)
+    
+    vol = vol/vol.max().clamp_min(1e-8)
     return vol
         
         

@@ -34,9 +34,10 @@ class VolumeField(nn.Module, ABC):
     def materialize(
         self,
         resolution: tuple[int, int, int] = (32, 32, 32),
-        bounds: tuple[float, float] = (-1.0, 1.0),
+        bounds: tuple[float, float] = (-1.0, 1.0)
+        ,
     ) -> Tensor:
-
+        
         x_range = torch.linspace(bounds[0],bounds[1], resolution[2])
         y_range = torch.linspace(bounds[0],bounds[1], resolution[1])
         z_range = torch.linspace(bounds[0], bounds[1], resolution[0])

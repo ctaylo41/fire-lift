@@ -99,7 +99,7 @@ class OrthographicCamera:
         u = torch.cross(f, r, dim=-1)
         
         # R_wc: rotation matrix whose columns are the camera basis vectors in world space.
-        # This matches the convention v_world = v_camera @ R_wc.
+        # This matches the convention v_world = v_camera @ R_wc.T.
         R_wc = torch.stack([r, u, f], dim=1)  # [3, 3]
 
         t_wc = eye

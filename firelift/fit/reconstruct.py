@@ -48,12 +48,15 @@ def compute_loss(
     weights: LossWeights,
     n_samples_per_ray: int,
 ) -> tuple[Tensor, dict[str, Tensor]]:
-    total_loss = torch.tensor(0.0)
+    device = VolumeField.regularization_field().device
+    dtype = VolumeField.regularization_field().dtype
+    
+    total_loss = torch.tensor(0.0, device=device, dtype=dtype)
     
     loss_components = {
-        "image" : 0.0,
-        "sparsity" : 0.0,
-        "variation" : 0.0
+        "image" : torch.tensor(0.0, device=device, dtype=dtype),
+        "sparsity" : torch.tensor(0.0, device=device, dtype=dtype),
+        "variation" : torch.tensor(0.0, device=device, dtype=dtype)
     }
     
     for observation in observations:
@@ -65,22 +68,25 @@ def compute_loss(
         loss = image_loss(render, image)
         
         total_loss += loss*weights.image
+        
         loss_components["image"] += loss.detach()
+        
+    total_loss/=len(observations)
     
-    if LossWeights.sparsity!=0.0:     
-        sparsity_loss = sparsity_l1(volume).sum()
+    if weights.sparsity!=0.0:     
+        sparsity_loss = sparsity_l1(volume.regularization_field).sum()
         sparsity_loss *= weights.sparsity
         total_loss += sparsity_loss
         loss_components["sparsity"] = sparsity_loss.detach()
     
     
-    if LossWeights.tv!=0.0:
-        variation_loss = total_variation(volume)
+    if weights.tv!=0.0:
+        variation_loss = total_variation(volume.regularization_field)
         variation_loss *= weights.tv
         total_loss+= variation_loss
         loss_components["variation"] = variation_loss.detach()
         
-        return (total_loss, loss_components)
+    return (total_loss, loss_components)
     
 
 def fit_volume(

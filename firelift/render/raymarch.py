@@ -24,6 +24,7 @@ def sample_along_rays(
 
 
 def emission_integral(samples: Tensor, t: Tensor) -> Tensor:
+    assert samples.numel()>=2
     dt = (t[-1] - t[0]) / (t.numel() - 1)
     image = samples.sum(dim=-1) * dt
     return image
