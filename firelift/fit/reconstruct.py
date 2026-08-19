@@ -48,8 +48,8 @@ def compute_loss(
     weights: LossWeights,
     n_samples_per_ray: int,
 ) -> tuple[Tensor, dict[str, Tensor]]:
-    device = VolumeField.regularization_field().device
-    dtype = VolumeField.regularization_field().dtype
+    device = volume.regularization_field().device
+    dtype = volume.regularization_field().dtype
     
     total_loss = torch.tensor(0.0, device=device, dtype=dtype)
     
@@ -71,19 +71,20 @@ def compute_loss(
         
         loss_components["image"] += loss.detach()
         
-    total_loss/=len(observations)
+    total_loss /= len(observations)
+    loss_components["image"] /= len(observations)
     
-    if weights.sparsity!=0.0:     
-        sparsity_loss = sparsity_l1(volume.regularization_field).sum()
+    if weights.sparsity != 0.0:     
+        sparsity_loss = sparsity_l1(volume.regularization_field())
         sparsity_loss *= weights.sparsity
         total_loss += sparsity_loss
         loss_components["sparsity"] = sparsity_loss.detach()
     
     
-    if weights.tv!=0.0:
-        variation_loss = total_variation(volume.regularization_field)
+    if weights.tv != 0.0:
+        variation_loss = total_variation(volume.regularization_field())
         variation_loss *= weights.tv
-        total_loss+= variation_loss
+        total_loss += variation_loss
         loss_components["variation"] = variation_loss.detach()
         
     return (total_loss, loss_components)

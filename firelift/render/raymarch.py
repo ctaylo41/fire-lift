@@ -14,6 +14,7 @@ def sample_along_rays(
     far: float,
     n_samples: int,
 ) -> tuple[Tensor, Tensor]:
+    assert n_samples >= 2, f"n_samples must be >= 2, got {n_samples}"
     dt = (far - near) / n_samples
     t = near + (torch.arange(n_samples, dtype=rays.origins.dtype, device=rays.origins.device) + 0.5) * dt
     origins = rays.origins
@@ -24,7 +25,6 @@ def sample_along_rays(
 
 
 def emission_integral(samples: Tensor, t: Tensor) -> Tensor:
-    assert samples.numel()>=2
     dt = (t[-1] - t[0]) / (t.numel() - 1)
     image = samples.sum(dim=-1) * dt
     return image

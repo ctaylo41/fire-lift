@@ -167,6 +167,54 @@ def make_plume_volume(
     
     vol = vol/vol.max().clamp_min(1e-8)
     return vol
+
+
+def make_asymmetric_diagnostic_volume(
+    resolution: tuple[int, int, int] = (32, 32, 32),
+    bounds: tuple[float, float] = (-1.0, 1.0),
+    *,
+    seed: int | None = None,
+    device: torch.device | str = "cpu",
+) -> Tensor:
+    """Generate an intentionally asymmetric diagnostic volume.
+    
+    Three Gaussians placed at asymmetric positions to create strong x/y
+    variation, making novel view divergence obvious.
+    
+    Returns:
+        dense volume `[D,H,W]`.
+    """
+    if seed is not None:
+        torch.manual_seed(seed)
+    
+    grid = make_world_grid(resolution, bounds=bounds, device=device)
+    vol = torch.zeros(resolution, device=device)
+    
+    # Three asymmetrically placed Gaussians
+    blobs = [
+        GaussianBlob(
+            center_xyz=torch.tensor([-0.25, -0.4, -0.4], device=device),
+            scales_xyz=torch.tensor([0.15, 0.15, 0.20], device=device),
+            amplitude=1.0
+        ),
+        GaussianBlob(
+            center_xyz=torch.tensor([0.0, 0.25, 0.0], device=device),
+            scales_xyz=torch.tensor([0.12, 0.12, 0.18], device=device),
+            amplitude=0.8
+        ),
+        GaussianBlob(
+            center_xyz=torch.tensor([0.2, -0.1, 0.5], device=device),
+            scales_xyz=torch.tensor([0.10, 0.10, 0.15], device=device),
+            amplitude=0.9
+        ),
+    ]
+    
+    for blob in blobs:
+        eval_blob = gaussian_blob_field(grid, blob)
+        vol += eval_blob
+    
+    vol = vol / vol.max().clamp_min(1e-8)
+    return vol
         
         
         

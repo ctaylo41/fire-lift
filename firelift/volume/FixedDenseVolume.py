@@ -1,9 +1,11 @@
 from firelift.volume.dense import VolumeField
-import Torch
+import torch
+from torch import Tensor
 
 
 class FixedDenseVolume(VolumeField):
     def __init__(self,
+            plume_volume: Tensor,
             resolution: tuple[int, int, int] = (32, 32, 32),
             *,
             init_value: float = -4.0,
@@ -12,9 +14,8 @@ class FixedDenseVolume(VolumeField):
         self.resolution = resolution
         self.init_value = init_value
         self.bounds = bounds
-        
         d, h, w = resolution
-        self.theta = torch.full((1,1, d, h, w), init_value)
+        self.theta = plume_volume
     
     def sample(self, points_xyz):
         normalized_world = self.world_to_grid(points_xyz)
@@ -29,7 +30,21 @@ class FixedDenseVolume(VolumeField):
         
         return sampled.squeeze(0).squeeze(0).squeeze(1).squeeze(-1)
 
+    def world_to_grid(self, points_xyz: Tensor) -> Tensor:
+        min_bound, max_bound = self.bounds
+
+        range = max_bound - min_bound
+
+        normalized = 2 * (points_xyz - min_bound) / range - 1
     
+        return normalized
+
+    def emission_grid(self) -> Tensor:
+        emission = torch.nn.functional.softplus(self.theta)
+        emission = emission.squeeze(0).squeeze(0)
+        
+        return emission
+
     
     def regularization_field(self):
-        return self.grid
+        return self.emission_grid()

@@ -32,24 +32,46 @@ class AxisymmetricVolume(VolumeField):
 
     def emission_profile(self) -> Tensor:
         """Return non-negative profile `[H_z,R]`."""
-        raise NotImplementedError
+        profile = torch.nn.functional.softplus(self.theta)
+        return profile.squeeze(0).squeeze(0)
 
     def world_to_profile_coords(self, points_xyz: Tensor) -> Tensor:
-        """Map xyz points to normalized `(r,z)` coordinates for 2D sampling.
+        """Map xyz points to normalized `(r,z)` coordinates for 2D sampling."""
+        if points_xyz.shape[-1] != 3:
+            raise ValueError(f"Expected final dimension 3, got {points_xyz.shape}")
 
-        TODO:
-        - r = sqrt(x^2 + y^2)
-        - normalize r from [0, max_radius] to [-1,1]
-        - normalize z from z_bounds to [-1,1]
-        - remember 2D `grid_sample` expects coordinates `(x,y)`, so using
-          `(r,z)` is natural if profile memory is `[z,r]`
-        """
-        raise NotImplementedError
+        r = torch.sqrt(points_xyz[..., 0] ** 2 + points_xyz[..., 1] ** 2)
+        z_world = points_xyz[..., 2]
+
+        r_norm = 2.0 * (r / self.max_radius) - 1.0
+        z_norm = 2.0 * (z_world - self.z_bounds[0]) / (self.z_bounds[1] - self.z_bounds[0]) - 1.0
+
+        r_norm = torch.clamp(r_norm, -1.0, 1.0)
+        z_norm = torch.clamp(z_norm, -1.0, 1.0)
+
+        # grid_sample expects the last dimension as (x, y) coordinates.
+        return torch.stack([r_norm, z_norm], dim=-1)
 
     def sample(self, points_xyz: Tensor) -> Tensor:
         """Sample the revolved profile at arbitrary world-space points."""
-        raise NotImplementedError
+        coords = self.world_to_profile_coords(points_xyz)
+        flat_coords = coords.reshape(-1, 2)
+
+        profile = self.emission_profile()
+        profile_grid = profile.unsqueeze(0).unsqueeze(0)
+
+        sample_grid = flat_coords.reshape(1, -1, 1, 2)
+        sampled = F.grid_sample(
+            profile_grid,
+            sample_grid,
+            mode="bilinear",
+            padding_mode="zeros",
+            align_corners=True,
+        )
+
+        values = sampled.squeeze(0).squeeze(-1)
+        return values.reshape(*points_xyz.shape[:-1])
 
     def regularization_field(self) -> Tensor:
         """Apply profile-space priors to the compact physical emission."""
-        raise NotImplementedError
+        return self.emission_profile()

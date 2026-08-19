@@ -37,10 +37,12 @@ class VolumeField(nn.Module, ABC):
         bounds: tuple[float, float] = (-1.0, 1.0)
         ,
     ) -> Tensor:
+        device = self.regularization_field().device
+        dtype = self.regularization_field().dtype
         
-        x_range = torch.linspace(bounds[0],bounds[1], resolution[2])
-        y_range = torch.linspace(bounds[0],bounds[1], resolution[1])
-        z_range = torch.linspace(bounds[0], bounds[1], resolution[0])
+        x_range = torch.linspace(bounds[0], bounds[1], resolution[2], device=device, dtype=dtype)
+        y_range = torch.linspace(bounds[0], bounds[1], resolution[1], device=device, dtype=dtype)
+        z_range = torch.linspace(bounds[0], bounds[1], resolution[0], device=device, dtype=dtype)
         
         d, y_grid, x_grid = torch.meshgrid(z_range, y_range, x_range, indexing="ij")
         

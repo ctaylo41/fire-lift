@@ -14,7 +14,7 @@ def total_variation(field: Tensor) -> Tensor:
     tv = field.new_zeros(())
     for axis in range(field.ndim):
         if field.shape[axis] > 1:
-            tv = tv + torch.diff(field, dim=axis).abs().sum()
+            tv = tv + torch.diff(field, dim=axis).abs().mean()
     return tv
 
 

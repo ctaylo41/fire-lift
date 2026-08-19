@@ -43,6 +43,11 @@ def test_prior_enabled_compute_loss_uses_regularization_field():
     bounds = (-1.0, 1.0)
     vol = DenseVolume(resolution=resolution, init_value=init_value, bounds=bounds)
     
+    # Add variation to the volume so TV is non-zero
+    d, h, w = resolution
+    z = torch.linspace(-1.0, 1.0, d).view(1, 1, d, 1, 1)
+    vol.theta.data = (2.0 * z).expand(1, 1, d, h, w).contiguous()
+    
     R_wc = torch.eye(3)
     t_wc = torch.tensor([0.0, 0.0, -2.5])
     camera = OrthographicCamera(R_wc=R_wc, t_wc=t_wc, ortho_width=2.2, near=1.5, far=3.5)
@@ -72,10 +77,10 @@ def test_two_identical_observations_have_same_mean_image_loss_as_one():
     camera = OrthographicCamera(R_wc=R_wc, t_wc=t_wc, ortho_width=2.2, near=1.5, far=3.5)
     height, width = 32, 32
     
-    image = render_emission(vol, camera, height, width, n_samples=96)
+    target_image = torch.ones(height, width) * 0.5
     
-    obs_1 = Observation(image, camera)
-    obs_2 = Observation(image, camera)
+    obs_1 = Observation(target_image, camera)
+    obs_2 = Observation(target_image, camera)
     config = LossWeights(1.0, 0, 0)
     
     loss_one = compute_loss(vol, [obs_1], weights=config, n_samples_per_ray=96)
