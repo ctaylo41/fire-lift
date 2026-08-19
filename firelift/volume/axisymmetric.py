@@ -46,9 +46,6 @@ class AxisymmetricVolume(VolumeField):
         r_norm = 2.0 * (r / self.max_radius) - 1.0
         z_norm = 2.0 * (z_world - self.z_bounds[0]) / (self.z_bounds[1] - self.z_bounds[0]) - 1.0
 
-        r_norm = torch.clamp(r_norm, -1.0, 1.0)
-        z_norm = torch.clamp(z_norm, -1.0, 1.0)
-
         # grid_sample expects the last dimension as (x, y) coordinates.
         return torch.stack([r_norm, z_norm], dim=-1)
 

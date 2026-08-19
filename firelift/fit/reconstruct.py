@@ -47,6 +47,8 @@ def compute_loss(
     *,
     weights: LossWeights,
     n_samples_per_ray: int,
+    temporal_target: Tensor | None = None,
+    temporal_weight: float = 0.0,
 ) -> tuple[Tensor, dict[str, Tensor]]:
     device = volume.regularization_field().device
     dtype = volume.regularization_field().dtype
@@ -56,7 +58,7 @@ def compute_loss(
     loss_components = {
         "image" : torch.tensor(0.0, device=device, dtype=dtype),
         "sparsity" : torch.tensor(0.0, device=device, dtype=dtype),
-        "variation" : torch.tensor(0.0, device=device, dtype=dtype)
+        "variation" : torch.tensor(0.0, device=device, dtype=dtype),
     }
     
     for observation in observations:
@@ -86,6 +88,17 @@ def compute_loss(
         variation_loss *= weights.tv
         total_loss += variation_loss
         loss_components["variation"] = variation_loss.detach()
+
+    if temporal_target is not None:
+        current_field = volume.regularization_field()
+        if current_field.shape != temporal_target.shape:
+            raise ValueError(
+                "Temporal target shape must match the current regularization field: "
+                f"{tuple(temporal_target.shape)} != {tuple(current_field.shape)}"
+            )
+        temporal_loss = torch.mean(torch.abs(current_field - temporal_target.detach()))
+        total_loss += temporal_weight * temporal_loss
+        loss_components["temporal"] = (temporal_weight * temporal_loss).detach()
         
     return (total_loss, loss_components)
     
@@ -96,6 +109,8 @@ def fit_volume(
     *,
     weights: LossWeights,
     config: FitConfig,
+    temporal_target: Tensor | None = None,
+    temporal_weight: float = 0.0,
 ) -> dict[str, list[float]]:
     """Optimize volume parameters with Adam.
 
@@ -114,6 +129,7 @@ def fit_volume(
         "image": [],
         "sparsity": [],
         "variation": [],
+        "temporal": [],
     }
 
     optimizer = torch.optim.Adam(volume.parameters(), lr=config.lr)
@@ -126,6 +142,8 @@ def fit_volume(
             observations,
             weights=weights,
             n_samples_per_ray=config.n_samples_per_ray,
+            temporal_target=temporal_target,
+            temporal_weight=temporal_weight,
         )
 
         total_loss.backward()
@@ -135,6 +153,7 @@ def fit_volume(
         history_tracking["sparsity"].append(float(component_loss["sparsity"].item()))
         history_tracking["image"].append(float(component_loss["image"].item()))
         history_tracking["variation"].append(float(component_loss["variation"].item()))
+        history_tracking["temporal"].append(float(component_loss.get("temporal", torch.tensor(0.0)).item()))
 
         if step % config.log_every == 0 or step == config.steps - 1:
             print(
@@ -142,7 +161,8 @@ def fit_volume(
                 f"total_loss={total_loss.item():.6f} "
                 f"image_loss={component_loss['image'].item():.6f} "
                 f"sparsity_loss={component_loss['sparsity'].item():.6f} "
-                f"variation_loss={component_loss['variation'].item():.6f}"
+                f"variation_loss={component_loss['variation'].item():.6f} "
+                f"temporal_loss={component_loss.get('temporal', torch.tensor(0.0)).item():.6f}"
             )
 
     return history_tracking

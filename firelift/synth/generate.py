@@ -115,6 +115,7 @@ def make_plume_volume(
     n_blobs: int = 6,
     seed: int | None = None,
     approximately_axisymmetric: bool = False,
+    axis_jitter: float = 0.0,
     device: torch.device | str = "cpu",
 ) -> Tensor:
     """Generate a procedural ground-truth fire-like emission volume.
@@ -130,6 +131,29 @@ def make_plume_volume(
     Returns:
         dense volume `[D,H,W]`.
     """
+    blobs = make_plume_blobs(
+        n_blobs=n_blobs,
+        seed=seed,
+        approximately_axisymmetric=approximately_axisymmetric,
+        axis_jitter=axis_jitter,
+        device=device,
+    )
+    grid = make_world_grid(resolution, bounds=bounds, device=device)
+    vol = torch.zeros(resolution, device=device)
+    for blob in blobs:
+        vol += gaussian_blob_field(grid, blob)
+    return vol / vol.max().clamp_min(1e-8)
+
+
+def make_plume_blobs(
+    *,
+    n_blobs: int = 6,
+    seed: int | None = None,
+    approximately_axisymmetric: bool = False,
+    axis_jitter: float = 0.0,
+    device: torch.device | str = "cpu",
+) -> list[GaussianBlob]:
+    """Sample the Gaussian parameters used by the procedural plume."""
     radial_spread = 0.35
     z_range = (-0.8, 0.7)
     scale_xy_range = (0.10, 0.28)
@@ -141,10 +165,6 @@ def make_plume_volume(
     if seed is not None:
         torch.manual_seed(seed)
         
-    grid = make_world_grid(resolution, bounds=bounds, device=device)
-        
-    vol = torch.zeros(resolution, device=device)
-    
     output = sample_blob_params(
         radial_spread=radial_spread,
         z_range=z_range,
@@ -153,20 +173,18 @@ def make_plume_volume(
         taper=taper,
         num_samples=n_blobs,
         axisymmetric=approximately_axisymmetric,
-        axis_jitter=0.0,
+        axis_jitter=axis_jitter,
         anisotropy=anisotropy,
         device=device,
         dtype=torch.float32
     )
         
     
-    for center, scale, amplitude in zip(*output):
-        blob = GaussianBlob(center, scale, amplitude)
-        eval_blob = gaussian_blob_field(grid, blob)
-        vol += eval_blob
-    
-    vol = vol/vol.max().clamp_min(1e-8)
-    return vol
+    centers, scales, amplitudes = output
+    return [
+        GaussianBlob(center, scale, float(amplitude))
+        for center, scale, amplitude in zip(centers, scales, amplitudes)
+    ]
 
 
 def make_asymmetric_diagnostic_volume(
