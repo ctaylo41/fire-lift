@@ -26,6 +26,11 @@ def fit_sequence(
     temporal_weight: float = 0.0,
     config: FitConfig | None = None,
     weights: LossWeights | None = None,
+    adaptive: bool = False,
+    first_frame_steps: int | None = None,
+    later_frame_steps: int | None = None,
+    adaptive_chunk_steps: int = 250,
+    adaptive_improvement_threshold: float = 1e-3,
 ) -> SequenceFitResult:
     """Fit one volume per frame of a fixed-camera video.
 
@@ -37,6 +42,10 @@ def fit_sequence(
         raise ValueError("frames must contain at least one frame")
     if temporal_weight < 0.0:
         raise ValueError("temporal_weight must be non-negative")
+    if adaptive_chunk_steps <= 0:
+        raise ValueError("adaptive_chunk_steps must be positive")
+    if adaptive_improvement_threshold < 0.0:
+        raise ValueError("adaptive_improvement_threshold must be non-negative")
 
     height, width = frames[0].shape
     if frames[0].ndim != 2:
@@ -50,7 +59,8 @@ def fit_sequence(
     histories: list[dict[str, list[float]]] = []
     previous_volume: VolumeField | None = None
 
-    for frame in frames:
+    for frame_index, frame in enumerate(frames):
+        print(f"frame={frame_index + 1}/{len(frames)} start")
         volume = volume_factory()
         if warm_start and previous_volume is not None:
             volume.load_state_dict(previous_volume.state_dict())
@@ -59,17 +69,70 @@ def fit_sequence(
         if previous_volume is not None and temporal_weight > 0.0:
             temporal_target = previous_volume.regularization_field().detach().clone()
 
-        history = fit_volume(
-            volume,
-            [Observation(frame, camera)],
-            weights=fit_weights,
-            config=fit_config,
-            temporal_target=temporal_target,
-            temporal_weight=temporal_weight,
-        )
+        observation = [Observation(frame, camera)]
+
+        if not adaptive:
+            history = fit_volume(
+                volume,
+                observation,
+                weights=fit_weights,
+                config=fit_config,
+                temporal_target=temporal_target,
+                temporal_weight=temporal_weight,
+            )
+        else:
+            maximum_steps = (
+                first_frame_steps if frame_index == 0 else later_frame_steps
+            )
+            maximum_steps = fit_config.steps if maximum_steps is None else maximum_steps
+            if maximum_steps <= 0:
+                raise ValueError("adaptive step budgets must be positive")
+
+            history = {key: [] for key in ("total", "image", "sparsity", "variation", "temporal")}
+            steps_done = 0
+            while steps_done < maximum_steps:
+                chunk_steps = (
+                    maximum_steps
+                    if frame_index == 0
+                    else min(adaptive_chunk_steps, maximum_steps - steps_done)
+                )
+                chunk_config = FitConfig(
+                    steps=chunk_steps,
+                    lr=fit_config.lr,
+                    n_samples_per_ray=fit_config.n_samples_per_ray,
+                    log_every=fit_config.log_every,
+                )
+                chunk_history = fit_volume(
+                    volume,
+                    observation,
+                    weights=fit_weights,
+                    config=chunk_config,
+                    temporal_target=temporal_target,
+                    temporal_weight=temporal_weight,
+                )
+                for key in history:
+                    history[key].extend(chunk_history[key])
+                steps_done += chunk_steps
+
+                if frame_index == 0 or steps_done >= maximum_steps:
+                    break
+                start_loss = chunk_history["total"][0]
+                end_loss = chunk_history["total"][-1]
+                relative_improvement = (start_loss - end_loss) / max(abs(start_loss), 1e-8)
+                if relative_improvement <= adaptive_improvement_threshold:
+                    print(
+                        f"adaptive_stop frame={frame_index} steps={steps_done} "
+                        f"relative_improvement={relative_improvement:.6f}"
+                    )
+                    break
         volumes.append(volume)
         histories.append(history)
         previous_volume = volume
+        print(
+            f"frame={frame_index + 1}/{len(frames)} done "
+            f"steps={len(history['total'])} "
+            f"final_loss={history['total'][-1]:.6f}"
+        )
 
     return SequenceFitResult(volumes=volumes, histories=histories)
         

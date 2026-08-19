@@ -27,10 +27,10 @@ def load_video_frames(path: str | Path, *, max_frames: int | None = None) -> lis
     are discarded; spatial dimensions are never changed.
     """
     frames: list[Tensor] = []
-    for index, frame in enumerate(iio.imiter(path)):
-        if max_frames is not None and index >= max_frames:
-            break
+    for frame in iio.imiter(path):
         frames.append(_to_rgb_tensor(frame))
+        if max_frames is not None and len(frames) >= max_frames:
+            break
     return frames
 
 

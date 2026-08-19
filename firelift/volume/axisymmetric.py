@@ -72,3 +72,64 @@ class AxisymmetricVolume(VolumeField):
     def regularization_field(self) -> Tensor:
         """Apply profile-space priors to the compact physical emission."""
         return self.emission_profile()
+
+
+class FourierVolume(VolumeField):
+    """Compact first-order angular Fourier volume.
+
+    The learnable profile stores three channels over `(z, r)`. Emission is
+    evaluated as `softplus(A0 + A1*cos(theta) + B1*sin(theta))`.
+    """
+
+    def __init__(
+        self,
+        profile_resolution: tuple[int, int] = (32, 16),
+        *,
+        max_radius: float = 1.0,
+        z_bounds: tuple[float, float] = (-1.0, 1.0),
+        init_value: float = -3.0,
+    ) -> None:
+        super().__init__()
+        h_z, r = profile_resolution
+        self.profile_resolution = profile_resolution
+        self.max_radius = max_radius
+        self.z_bounds = z_bounds
+        self.theta = nn.Parameter(torch.full((1, 3, h_z, r), init_value))
+
+    def world_to_profile_coords(self, points_xyz: Tensor) -> tuple[Tensor, Tensor]:
+        if points_xyz.shape[-1] != 3:
+            raise ValueError(f"Expected final dimension 3, got {points_xyz.shape}")
+
+        radius = torch.sqrt(points_xyz[..., 0] ** 2 + points_xyz[..., 1] ** 2)
+        z_world = points_xyz[..., 2]
+        r_norm = 2.0 * (radius / self.max_radius) - 1.0
+        z_norm = 2.0 * (z_world - self.z_bounds[0]) / (self.z_bounds[1] - self.z_bounds[0]) - 1.0
+        angle = torch.atan2(points_xyz[..., 1], points_xyz[..., 0])
+        return torch.stack([r_norm, z_norm], dim=-1), angle
+
+    def emission_profile(self) -> Tensor:
+        return torch.nn.functional.softplus(self.theta)
+
+    def sample(self, points_xyz: Tensor) -> Tensor:
+        coords, angle = self.world_to_profile_coords(points_xyz)
+        sample_grid = coords.reshape(1, -1, 1, 2)
+        profiles = self.theta
+        sampled = F.grid_sample(
+            profiles,
+            sample_grid,
+            mode="bilinear",
+            padding_mode="zeros",
+            align_corners=True,
+        ).squeeze(0).squeeze(-1)
+        sampled = sampled.reshape(3, *points_xyz.shape[:-1])
+        logits = (
+            sampled[0]
+            + sampled[1] * torch.cos(angle)
+            + sampled[2] * torch.sin(angle)
+        )
+        in_bounds = (coords[..., 0].abs() <= 1.0) & (coords[..., 1].abs() <= 1.0)
+        return F.softplus(logits) * in_bounds.to(logits.dtype)
+
+    def regularization_field(self) -> Tensor:
+        """Return the three compact Fourier coefficient channels."""
+        return self.theta.squeeze(0)
