@@ -16,6 +16,7 @@ from firelift.volume.priors import sparsity_l1, total_variation
 class Observation:
     image: Tensor                    # [H,W]
     camera: OrthographicCamera
+    weight: Tensor | None = None     # [H,W], optional per-pixel weighting
 
 
 @dataclass
@@ -33,12 +34,16 @@ class FitConfig:
     log_every: int = 50
 
 
-def image_loss(predicted: Tensor, target: Tensor) -> Tensor:
+def image_loss(predicted: Tensor, target: Tensor, weight: Tensor | None = None) -> Tensor:
     """First baseline image-space reconstruction loss.
 
     TODO: start with L1. Keep this as a function so alternatives are easy.
     """
-    return torch.abs(target - predicted).mean()
+    error = torch.abs(target - predicted)
+    if weight is None:
+        return error.mean()
+    weight_sum = weight.sum().clamp_min(1e-8)
+    return (error * weight).sum() / weight_sum
 
 
 def compute_loss(
@@ -63,11 +68,12 @@ def compute_loss(
     
     for observation in observations:
         image = observation.image
+        weight = observation.weight
         camera = observation.camera
         height, width = image.shape
         render = render_emission(volume, camera, height, width, n_samples=n_samples_per_ray)
         
-        loss = image_loss(render, image)
+        loss = image_loss(render, image, weight)
         
         total_loss += loss*weights.image
         

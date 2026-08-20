@@ -22,6 +22,7 @@ def fit_sequence(
     camera: OrthographicCamera,
     volume_factory: Callable[[], VolumeField],
     *,
+    frame_weights: Sequence[Tensor] | None = None,
     warm_start: bool = True,
     temporal_weight: float = 0.0,
     config: FitConfig | None = None,
@@ -52,6 +53,11 @@ def fit_sequence(
         raise ValueError("Each frame must be a scalar image with shape [H, W]")
     if any(frame.ndim != 2 or frame.shape != (height, width) for frame in frames):
         raise ValueError("All frames must have the same [H, W] shape")
+    if frame_weights is not None:
+        if len(frame_weights) != len(frames):
+            raise ValueError("frame_weights must have the same length as frames")
+        if any(weight.shape != (height, width) for weight in frame_weights):
+            raise ValueError("Each frame weight map must have shape [H, W]")
 
     fit_config = config if config is not None else FitConfig()
     fit_weights = weights if weights is not None else LossWeights()
@@ -69,7 +75,8 @@ def fit_sequence(
         if previous_volume is not None and temporal_weight > 0.0:
             temporal_target = previous_volume.regularization_field().detach().clone()
 
-        observation = [Observation(frame, camera)]
+        weight = None if frame_weights is None else frame_weights[frame_index]
+        observation = [Observation(frame, camera, weight=weight)]
 
         if not adaptive:
             history = fit_volume(

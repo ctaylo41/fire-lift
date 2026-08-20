@@ -74,6 +74,66 @@ class AxisymmetricVolume(VolumeField):
         return self.emission_profile()
 
 
+class BentAxisymmetricVolume(AxisymmetricVolume):
+    """Axisymmetric profile around an observable x/z centerline.
+
+    The camera looks along world y, so only the image-plane displacement
+    ``cx(z)`` is learned. The unobserved depth displacement ``cy(z)`` is fixed
+    to zero by the prior.
+    """
+
+    def __init__(
+        self,
+        profile_resolution: tuple[int, int] = (32, 16),
+        *,
+        max_radius: float = 1.0,
+        z_bounds: tuple[float, float] = (-1.0, 1.0),
+        init_value: float = -3.0,
+        max_center_offset: float = 0.5,
+        centerline_points: int = 6,
+    ) -> None:
+        super().__init__(
+            profile_resolution,
+            max_radius=max_radius,
+            z_bounds=z_bounds,
+            init_value=init_value,
+        )
+        if centerline_points < 2:
+            raise ValueError("centerline_points must be at least 2")
+        self.max_center_offset = max_center_offset
+        self.centerline_points = centerline_points
+        self.centerline = nn.Parameter(torch.zeros(1, 1, centerline_points))
+
+    def centerline_at_z(self, z_world: Tensor) -> Tensor:
+        """Interpolate the bounded image-plane ``cx(z)`` centerline."""
+        z_min, z_max = self.z_bounds
+        z_norm = (z_world - z_min) / (z_max - z_min)
+        position = z_norm.clamp(0.0, 1.0) * (self.centerline.shape[-1] - 1)
+        lower = position.floor().long()
+        upper = (lower + 1).clamp(max=self.centerline.shape[-1] - 1)
+        fraction = position - lower.to(position.dtype)
+        values = self.max_center_offset * torch.tanh(self.centerline)
+        lower_values = values[0, 0, lower]
+        upper_values = values[0, 0, upper]
+        return lower_values * (1.0 - fraction) + upper_values * fraction
+
+    def world_to_profile_coords(self, points_xyz: Tensor) -> Tensor:
+        if points_xyz.shape[-1] != 3:
+            raise ValueError(f"Expected final dimension 3, got {points_xyz.shape}")
+        center_x = self.centerline_at_z(points_xyz[..., 2])
+        shifted_x = points_xyz[..., 0] - center_x
+        shifted_y = points_xyz[..., 1]
+        radius = torch.sqrt(shifted_x.square() + shifted_y.square())
+        z_world = points_xyz[..., 2]
+        r_norm = 2.0 * (radius / self.max_radius) - 1.0
+        z_norm = 2.0 * (z_world - self.z_bounds[0]) / (self.z_bounds[1] - self.z_bounds[0]) - 1.0
+        return torch.stack([r_norm, z_norm], dim=-1)
+
+    def regularization_field(self) -> Tensor:
+        """Return profile plus the observable x-centerline parameters."""
+        return torch.cat([self.emission_profile().reshape(-1), self.centerline.reshape(-1)])
+
+
 class FourierVolume(VolumeField):
     """Compact first-order angular Fourier volume.
 
