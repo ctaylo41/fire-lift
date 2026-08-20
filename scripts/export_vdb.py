@@ -23,7 +23,7 @@ def parse_args() -> argparse.Namespace:
 
 def load_openvdb():
     try:
-        import pyopenvdb as vdb
+        import openvdb as vdb
     except ImportError as exc:
         raise RuntimeError(
             "OpenVDB Python bindings are required. Install `py-openvdb` from conda-forge "
